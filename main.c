@@ -3,8 +3,15 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+typedef struct {
+  char *pid;
+  unsigned long ticks[2];
+  double usage;
+} procinfo;
 
 // Get path for pseudo-file inside /proc/PID
 // Example: /proc/23/cmdline
@@ -20,7 +27,8 @@ const char *procfile(const char *pidname, const char *fname) {
     path[i + path_head] = pidname[i];
   }
   if (path[i + path_head] != '/')
-    path[(i++) + path_head] = '/'; // Add a separator if there isn't one
+    path[i + path_head] = '/'; // Add a separator if there isn't one
+  i++;
 
   // Append fname after /proc/PID/
   size_t flen = strlen(fname);
@@ -36,36 +44,68 @@ const char *procfile(const char *pidname, const char *fname) {
 int main() {
   DIR *proc = opendir("/proc");
 
+  procinfo *table = malloc(50 * sizeof(procinfo));
+  size_t tablesize = 0;
+
   struct dirent *ent;
   while ((ent = readdir(proc)) != NULL) {
     // Check if the name is a PID by seeing if the first char is a number
     char f = ent->d_name[0];
     if (f >= '0' && f <= '9') {
-      // Get path to the cmdline information for a process
-      const char *cmdpath = procfile(ent->d_name, "cmdline");
-      FILE *cmdline = fopen(cmdpath, "r");
-      if (!cmdline) {
-        continue;
+      // Allocate more memory for procinfo if needed
+      if (tablesize != 0 && tablesize % 50 == 0) {
+        procinfo *new = malloc((tablesize + 50) * sizeof(procinfo));
+        memcpy(new, table, tablesize * sizeof(procinfo));
+
+        free(table);
+        table = new;
       }
 
-      printf("%s : ", ent->d_name);
+      procinfo *this = table + tablesize;
 
-      // Read cmdline into a buffer and output it
+      // Copy ent->d_name
+      size_t pid_len = strlen(ent->d_name);
+      this->pid = malloc(pid_len + 1);
+      memcpy(this->pid, ent->d_name, pid_len);
+      this->pid[pid_len] = '\0';
+
+      // Calculate CPU usage
+      const char *stat_path = procfile(ent->d_name, "stat");
+      FILE *stat = fopen(stat_path, "r");
+      if (!stat) {
+        perror("fopen()");
+        puts(stat_path);
+        return -1;
+      }
+
+#if 0
       char buf[50];
-      bool rd = false; // Sometimes cmdline has nothing to read
-      size_t crd = sizeof buf;
-      do {
-        crd = fread(buf, 1, sizeof buf, cmdline);
-        if (crd) {
-          rd = true;
-          fwrite(buf, 1, crd, stdout);
-        }
-      } while (crd == sizeof buf);
+      while (true) {
+        int read = fread(buf, 1, sizeof buf, stat);
+        fwrite(buf, 1, read, stdout);
+        if (read < 50)
+          break;
+      }
+      rewind(stat);
+#endif
 
-      if (!rd)
-        puts("NULL"); // Couldn't read cmdline
-      else
-        puts("");
+      unsigned long utime, stime;
+      // TODO: Clean this up
+      fscanf(stat,
+             "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*lu %*lu %*lu %*lu "
+             "%lu %lu" /* ignore all but these */,
+             &utime, &stime);
+      fclose(stat);
+
+      this->ticks[0] = utime;
+      this->ticks[1] = stime;
+
+      tablesize++;
     }
+  }
+
+  for (size_t i = 0; i < tablesize; i++) {
+    printf("%s: %lu & %lu\n", table[i].pid, table[i].ticks[0],
+           table[i].ticks[1]);
   }
 }
