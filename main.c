@@ -92,7 +92,7 @@ int main() {
       unsigned long utime, stime;
       // TODO: Clean this up
       fscanf(stat,
-             "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*lu %*lu %*lu %*lu "
+             "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u "
              "%lu %lu" /* ignore all but these */,
              &utime, &stime);
       fclose(stat);
