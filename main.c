@@ -52,6 +52,15 @@ int main() {
     // Check if the name is a PID by seeing if the first char is a number
     char f = ent->d_name[0];
     if (f >= '0' && f <= '9') {
+      // Sometimes opening the stats will fail so I'll do it before allocation
+      const char *stat_path = procfile(ent->d_name, "stat");
+      FILE *stat = fopen(stat_path, "r");
+      if (!stat) {
+        perror("fopen()");
+        puts(stat_path);
+        continue;
+      }
+
       // Allocate more memory for procinfo if needed
       if (tablesize != 0 && tablesize % 50 == 0) {
         procinfo *new = malloc((tablesize + 50) * sizeof(procinfo));
@@ -69,15 +78,6 @@ int main() {
       memcpy(this->pid, ent->d_name, pid_len);
       this->pid[pid_len] = '\0';
 
-      // Calculate CPU usage
-      const char *stat_path = procfile(ent->d_name, "stat");
-      FILE *stat = fopen(stat_path, "r");
-      if (!stat) {
-        perror("fopen()");
-        puts(stat_path);
-        return -1;
-      }
-
 #if 0
       char buf[50];
       while (true) {
@@ -89,6 +89,7 @@ int main() {
       rewind(stat);
 #endif
 
+      // Get CPU ticks used
       unsigned long utime, stime;
       // TODO: Clean this up
       fscanf(stat,
